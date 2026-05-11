@@ -49,17 +49,54 @@ _(2-3 sentences)_
 
 Drop `submission/screenshots/jaeger-trace.png` showing `embed-text → vector-search → generate-tokens` spans.
 
+**Verified trace structure:** Found trace `a2d92f3955c491294e9738989e2df5e8` with 4 spans:
+- Parent: `predict` (152ms) with `gen_ai.request.model=gpt-4`
+- Child 1: `embed-text` (7ms) with `text.length=17`
+- Child 2: `vector-search` (16ms) with `k=5`
+- Child 3: `generate-tokens` (126ms) with `gen_ai.usage.input_tokens=4`, `gen_ai.usage.output_tokens=35`, `gen_ai.response.finish_reason=stop`
+
 ### Log line correlated to trace
 
 Paste the log line and the trace_id it links to:
 
+```json
+{
+  "model": "test-model",
+  "input_tokens": 4,
+  "output_tokens": 11,
+  "quality": 0.801,
+  "duration_seconds": 0.0944,
+  "trace_id": "b978385ae22f5086e40a82970a9c9add",
+  "event": "prediction served",
+  "level": "info",
+  "timestamp": "2026-05-11T06:50:56.716970Z"
+}
 ```
-... paste here ...
-```
+
+The `trace_id` field enables correlation between logs and traces. In Grafana's Loki datasource, a derived field extracts this value and creates a clickable link to the corresponding trace in Jaeger.
 
 ### Tail-sampling math
 
-If your service produced N traces/sec, what fraction did the policy keep? Show the calculation.
+**Policy configuration:**
+1. `keep-errors`: 100% of traces with status_code = ERROR
+2. `keep-slow`: 100% of traces with latency > 2000ms
+3. `probabilistic-1pct`: 1% of remaining healthy traces
+
+**Calculation for N traces/sec:**
+
+Assuming typical distribution: 1% errors, 1% slow (non-error), 98% healthy fast traces:
+
+```
+sampled = N × (P(error) × 1.0 + P(slow ∧ ¬error) × 1.0 + P(healthy) × 0.01)
+        = N × (0.01 × 1.0 + 0.01 × 1.0 + 0.98 × 0.01)
+        = N × (0.01 + 0.01 + 0.0098)
+        = N × 0.0298
+        ≈ 3% retention
+```
+
+**Cost reduction:** ~97% fewer traces stored vs. retain-everything, while keeping 100% of actionable traces (errors and outliers).
+
+**Buffer requirements:** With `decision_wait: 30s` and `num_traces: 50000`, the collector can handle up to ~1,666 traces/sec before buffer overflow (50,000 / 30 = 1,666).
 
 ---
 

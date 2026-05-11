@@ -1,0 +1,62 @@
+{
+  "traceID": "b43a6454fb4ac8b87a2f2b9227eeee32",
+  "duration_ms": 7.121,
+  "spans": [
+    {
+      "operationName": "embed-text",
+      "duration_ms": 7.121,
+      "spanID": "4ed6fc63445e9e2d",
+      "parentSpanID": "edf3b1d9f146c13a",
+      "attributes": [
+        {
+          "key": "text.length",
+          "value": 29
+        }
+      ]
+    },
+    {
+      "operationName": "vector-search",
+      "duration_ms": 13.115,
+      "spanID": "986e8ae1d5380745",
+      "parentSpanID": "edf3b1d9f146c13a",
+      "attributes": [
+        {
+          "key": "k",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "operationName": "generate-tokens",
+      "duration_ms": 313.517,
+      "spanID": "21d0664895546292",
+      "parentSpanID": "edf3b1d9f146c13a",
+      "attributes": [
+        {
+          "key": "gen_ai.response.finish_reason",
+          "value": "stop"
+        },
+        {
+          "key": "gen_ai.usage.input_tokens",
+          "value": 4
+        },
+        {
+          "key": "gen_ai.usage.output_tokens",
+          "value": 35
+        }
+      ]
+    },
+    {
+      "operationName": "predict",
+      "duration_ms": 335.662,
+      "spanID": "edf3b1d9f146c13a",
+      "parentSpanID": "root",
+      "attributes": [
+        {
+          "key": "gen_ai.request.model",
+          "value": "gpt-4"
+        }
+      ]
+    }
+  ]
+}

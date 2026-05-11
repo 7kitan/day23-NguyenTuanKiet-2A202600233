@@ -48,7 +48,14 @@ GPU_UTIL = Gauge(
     "Simulated GPU utilization [0,100]",
 )
 
-tracer = trace.get_tracer(__name__)
+tracer = None
+
+def get_tracer():
+    """Get tracer after setup_otel() has been called."""
+    global tracer
+    if tracer is None:
+        tracer = trace.get_tracer(__name__)
+    return tracer
 
 
 def setup_otel() -> None:
