@@ -13,7 +13,11 @@
 Paste output of `python3 00-setup/verify-docker.py`:
 
 ```
-... paste here ...
+Docker:        OK  (28.5.1)
+Compose v2:    OK  (2.40.2-desktop.1)
+RAM available: 7.65 GB (OK)
+Ports free:    BOUND: [8000, 9090, 9093, 3000, 3100, 16686, 4317, 4318, 8888]
+Report written: /Users/kitan/dev/day23/00-setup/setup-report.json
 ```
 
 ---
@@ -39,7 +43,7 @@ Drop `submission/screenshots/slo-burn-rate.png`.
 
 ### One thing surprised me about Prometheus / Grafana
 
-_(2-3 sentences)_
+Prometheus's pull-based model gives the scraper control over cardinality, not the instrumented service - preventing misconfigured apps from DOSing the monitoring system with metric floods.
 
 ---
 
@@ -107,12 +111,59 @@ sampled = N × (P(error) × 1.0 + P(slow ∧ ¬error) × 1.0 + P(healthy) × 0.0
 Paste `04-drift-detection/reports/drift-summary.json`:
 
 ```json
-... paste here ...
+{
+  "prompt_length": {
+    "psi": 3.461,
+    "kl": 1.7982,
+    "ks_stat": 0.702,
+    "ks_pvalue": 0.0,
+    "drift": "yes"
+  },
+  "embedding_norm": {
+    "psi": 0.0187,
+    "kl": 0.0324,
+    "ks_stat": 0.052,
+    "ks_pvalue": 0.133853,
+    "drift": "no"
+  },
+  "response_length": {
+    "psi": 0.0162,
+    "kl": 0.0178,
+    "ks_stat": 0.056,
+    "ks_pvalue": 0.086899,
+    "drift": "no"
+  },
+  "response_quality": {
+    "psi": 8.8486,
+    "kl": 13.5011,
+    "ks_stat": 0.941,
+    "ks_pvalue": 0.0,
+    "drift": "yes"
+  }
+}
 ```
+
+**Detected drift:** 2 features show significant drift (PSI > 0.2):
+- `prompt_length`: shifted from mean=50 to mean=85 (users sending longer prompts)
+- `response_quality`: shifted from beta(8,2) to beta(2,6) (quality degraded from high to low)
 
 ### Which test fits which feature?
 
-For each of `prompt_length`, `embedding_norm`, `response_length`, `response_quality`, name the test (PSI / KL / KS / MMD) you'd choose in production and why.
+**prompt_length** (continuous, unbounded token count):
+- **Best: PSI** - Industry standard for monitoring count-based features in production ML systems (Arize, Fiddler, Gantry all use PSI). PSI=3.461 successfully detected the 50→85 token shift. Binning makes it robust to outliers and interpretable to stakeholders ("PSI > 0.2 = investigate"). Established thresholds (0.1/0.2) enable automated alerting.
+- Alternative: KS test for statistical hypothesis testing (provides p-value for significance).
+
+**embedding_norm** (continuous, bounded ~[0.7, 1.3], L2 norm):
+- **Best: KS test** - Non-parametric, no distribution assumptions, handles bounded continuous distributions well. KS stat=0.052 correctly identified no drift. Robust to outliers in embedding space without requiring binning choices.
+- Alternative: MMD with RBF kernel if monitoring full high-dimensional embeddings (not just L2 norm). MMD captures complex distribution shifts in kernel space.
+
+**response_length** (continuous, unbounded token count):
+- **Best: PSI** - Same reasoning as prompt_length. Production systems prefer PSI for interpretability and consistency across features. PSI=0.016 shows stable generation length. Binning smooths noise from token-level variance.
+- Alternative: Quantile-based monitoring (P50/P95 shift detection) for real-time dashboards.
+
+**response_quality** (continuous, bounded [0,1], model score):
+- **Best: KL divergence** - Treats quality score as a probability-like distribution. KL=13.5 quantifies the magnitude of quality degradation (catastrophic shift from beta(8,2) to beta(2,6)). More informative than binary "drift/no drift" - tells you *how much* quality dropped.
+- Alternative: KS test for statistical significance (KS stat=0.941, p<0.001 confirms extreme shift). Use both: KL for magnitude, KS for confidence.
 
 ---
 
@@ -120,10 +171,12 @@ For each of `prompt_length`, `embedding_norm`, `response_length`, `response_qual
 
 ### Which prior-day metric was hardest to expose? Why?
 
-_(2-3 sentences. If you didn't have prior days running, write about which one would be hardest based on the integration scripts.)_
+**Day 20 (llama.cpp model serving)** would be the hardest to expose in production. llama.cpp's HTTP server doesn't natively emit Prometheus metrics - it's a C++ inference engine focused on speed, not observability. The lab's integration requires either patching llama.cpp source to add a `/metrics` endpoint or running a sidecar that scrapes llama.cpp's internal stats and re-exports them in Prometheus format. This is fragile: any llama.cpp version upgrade could break the sidecar's stat parsing. In contrast, Day 19's Qdrant has native Prometheus support, and Day 17's Airflow has well-maintained exporters (statsd_exporter). The lesson: when choosing infrastructure components, native observability support (OpenMetrics/OTLP) is a first-class requirement, not a nice-to-have.
 
 ---
 
 ## 6. The single change that mattered most
 
 > **Grader reads this closest.** What one thing about your stack design — a metric you added, a label you dropped, a panel you reorganized, an alert threshold you tuned — made the biggest difference between "works" and "useful"? Write 1-2 paragraphs. Connect it to a concept from the deck.
+
+Adding `uid: prometheus` to datasources.yml (one line) fixed the entire integration layer. Without it, Grafana auto-generated a random UID, causing all dashboard queries to fail silently despite Prometheus having the data. This connects to the deck's §4 emphasis on dashboards-as-code: explicit configuration beats implicit behavior. When dashboard JSON hardcodes `"uid": "prometheus"`, the provisioning must guarantee that UID exists. Without deterministic identifiers, dashboards break on every fresh install - the difference between "works on my laptop" and "works in production."
